@@ -8,14 +8,17 @@ This repo is referenced from the [pytorch-paligemma](https://github.com/hkproj/p
 I am reading these papers:  
 ✅ [PaLiGemma: A versatile 3B VLM for transfer](https://arxiv.org/pdf/2407.07726)  
 ✅ [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/pdf/2103.00020)  
-☑️ [Sigmoid Loss for Language Image Pre-Training](https://arxiv.org/pdf/2303.15343)
+✅ [Sigmoid Loss for Language Image Pre-Training](https://arxiv.org/pdf/2303.15343)  
+☑️ [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929)  
 
 
 ## Goals 🎯
 ☑️ Read and understand the different components of PaLiGemma.  
 ☑️ Understand the concept of Contrastive Learning and use of cross-entropy loss.  
 ✅ Read and understand the CLIP paper.  
-☑️ Read and understand the SigLIP paper.  
+✅ Read and understand the SigLIP paper.  
+☑️ Read the Vision Transformer paper.  
+☑️ Review the working mechanism of convolutional neural networks.  
 
 
 ## GitHub Repos 📦  
