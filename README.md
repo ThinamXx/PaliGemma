@@ -18,11 +18,12 @@ I am reading these papers:
 ✅ Read and understand the CLIP paper.  
 ✅ Read and understand the SigLIP paper.  
 ☑️ Read the Vision Transformer paper.  
-☑️ Review the working mechanism of convolutional neural networks.  
+✅ Review the working mechanism of convolutional neural networks.  
 
 
 ## GitHub Repos 📦  
 🔗 [CLIP](https://github.com/OpenAI/CLIP)  
+🔗 [vision_transformer](https://github.com/google-research/vision_transformer)  
 
 
 ## Citations  
