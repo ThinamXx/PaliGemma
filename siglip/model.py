@@ -1,7 +1,7 @@
-from typing import Tuple
-
 import torch
 import torch.nn as nn
+
+from typing import Tuple, Optional
 
 
 class SigLIPVisionConfig:
@@ -95,6 +95,48 @@ class SigLIPMLP(nn.Module):
         # (batch_size, num_patches, intermediate_size) -> (batch_size, num_patches, hidden_size)
         hidden_states = self.fc2(hidden_states)
         return hidden_states
+
+
+class SigLIPAttention(nn.Module):
+
+    def __init__(self, config: SigLIPVisionConfig):
+        super().__init__()
+        self.embed_dim = config.hidden_size
+        self.num_heads = config.num_attention_heads
+        self.head_dim = self.embed_dim // self.num_heads
+        self.scale = (
+            self.head_dim**-0.5
+        )  # mentioned in the original Transformer paper, 1/sqrt(head_dim)
+        self.dropout = config.attention_dropout
+
+        self.k_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        self.v_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        self.q_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim)
+
+    def forward(
+        self, hidden_states: torch.Tensor
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # hidden_states: (batch_size, num_patches, hidden_size)
+        batch_size, seq_len, _ = hidden_states.size()
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, hidden_size)
+        query_states = self.q_proj(hidden_states)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, hidden_size)
+        key_states = self.k_proj(hidden_states)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, hidden_size)
+        value_states = self.v_proj(hidden_states)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, num_heads, head_dim)
+        query_states = query_states.view(
+            batch_size, seq_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, num_heads, head_dim)
+        key_states = key_states.view(
+            batch_size, seq_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, num_heads, head_dim)
+        value_states = value_states.view(
+            batch_size, seq_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
 
 
 class SigLIPVisionEncoder(nn.Module):
