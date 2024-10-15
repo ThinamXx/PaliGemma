@@ -125,21 +125,58 @@ class SigLIPAttention(nn.Module):
         key_states = self.k_proj(hidden_states)
         # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, hidden_size)
         value_states = self.v_proj(hidden_states)
-        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, num_heads, head_dim)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_heads, num_patches, head_dim)
         query_states = query_states.view(
             batch_size, seq_len, self.num_heads, self.head_dim
         ).transpose(1, 2)
-        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, num_heads, head_dim)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_heads, num_patches, head_dim)
         key_states = key_states.view(
             batch_size, seq_len, self.num_heads, self.head_dim
         ).transpose(1, 2)
-        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, num_heads, head_dim)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_heads, num_patches, head_dim)
         value_states = value_states.view(
             batch_size, seq_len, self.num_heads, self.head_dim
         ).transpose(1, 2)
+        # (batch_size, num_heads, num_patches, head_dim) -> (batch_size, num_heads, num_patches, num_patches)
+        attn_weights = (
+            torch.matmul(query_states, key_states.transpose(2, 3)) * self.scale
+        )
+        # assert attn_weights.size() == (batch_size, self.num_heads, seq_len, seq_len)
+        if attn_weights.size() != (batch_size, self.num_heads, seq_len, seq_len):
+            raise ValueError(
+                f"Attention weights should have the shape "
+                f"(batch_size, num_heads, num_patches, num_patches), but got "
+                f"{attn_weights.size()}"
+            )
+        # apply softmax to the attention weights so that the values sum up to 1.
+        # (batch_size, num_heads, num_patches, num_patches)
+        attn_weights = nn.functional.softmax(
+            attn_weights, dim=-1, dtype=torch.float32
+        ).to(query_states.dtype)
+        # apply dropout to the attention weights when training.
+        attn_weights = nn.functional.dropout(
+            attn_weights, p=self.dropout, training=self.training
+        )
+        # (batch_size, num_heads, num_patches, num_patches) -> (batch_size, num_heads, num_patches, head_dim)
+        attn_output = torch.matmul(attn_weights, value_states)
+        # assert attn_output.size() == (batch_size, self.num_heads, seq_len, self.head_dim)
+        if attn_output.size() != (batch_size, self.num_heads, seq_len, self.head_dim):
+            raise ValueError(
+                f"Attention output should have the shape "
+                f"(batch_size, num_heads, num_patches, head_dim), but got "
+                f"{attn_output.size()}"
+            )
+        # (batch_size, num_heads, num_patches, head_dim) -> (batch_size, num_patches, num_heads, head_dim)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        # (batch_size, num_patches, num_heads, head_dim) -> (batch_size, num_patches, hidden_size)
+        attn_output = attn_output.reshape(batch_size, seq_len, self.embed_dim)
+        # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, hidden_size)
+        attn_output = self.out_proj(attn_output)
+
+        return attn_output, attn_weights
 
 
-class SigLIPVisionEncoder(nn.Module):
+class SigLIPEncoderLayer(nn.Module):
 
     def __init__(self, config: SigLIPVisionConfig):
         super().__init__()
@@ -167,6 +204,26 @@ class SigLIPVisionEncoder(nn.Module):
         # (batch_size, num_patches, hidden_size)
         hidden_states = hidden_states + residual
         # (batch_size, num_patches, hidden_size)
+        return hidden_states
+
+
+class SigLIPVisionEncoder(nn.Module):
+
+    def __init__(self, config: SigLIPVisionConfig):
+        super().__init__()
+        self.config = config
+        self.layers = nn.ModuleList(
+            [SigLIPEncoderLayer(config) for _ in range(config.num_hidden_layers)]
+        )
+
+    def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
+        # (batch_size, num_patches, hidden_size)
+        hidden_states = inputs_embeds
+
+        for layer in self.layers:
+            # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, hidden_size)
+            hidden_states = layer(hidden_states=hidden_states)
+
         return hidden_states
 
 
