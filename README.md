@@ -19,6 +19,8 @@ I am reading these papers:
 ✅ Read and understand the SigLIP paper.  
 ✅ Read the Vision Transformer paper.  
 ✅ Review the working mechanism of convolutional neural networks.  
+✅ Read about PaLiGemma [tokenizer](https://github.com/google-research/big_vision/blob/main/big_vision/configs/proj/paligemma/README.md#tokenizer).  
+☑️ Read HuggingFace's blog on [PaLiGemma](https://huggingface.co/blog/paligemma).  
 
 
 ## GitHub Repos 📦  
