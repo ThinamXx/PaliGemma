@@ -3,11 +3,31 @@ from torch import nn
 
 import numpy as np
 from PIL import Image
-from typing import List, Dict, Optional, Union, Tuple
+from typing import List, Dict, Optional, Union, Tuple, Iterable
 
 
 IMAGENET_STANDARD_MEAN = [0.5, 0.5, 0.5]
 IMAGENET_STANDARD_STD = [0.5, 0.5, 0.5]
+
+
+def add_image_tokens_to_prompt(
+    prefix_prompt: str,
+    bos_token: str,
+    image_seq_length: int,
+    image_token: str,
+):
+    """Function to add image tokens to the input text.
+
+    Quoting from the blog (https://huggingface.co/blog/paligemma#detailed-inference-process):
+    "image_tokens" -> "bos_token" -> "prefix_prompt" -> "\n"
+
+    From the paper it looks like the `\n` should be tokenized separately, but in the HF implementation this is not done.
+    ref to HF implementation: https://github.com/huggingface/transformers/blob/7f79a97399bb52aad8460e1da2f36577d5dccfed/src/transformers/models/paligemma/processing_paligemma.py#L55-L73
+    """
+
+    input_text = f"{image_token * image_seq_length}{bos_token}{prefix_prompt}\n"
+
+    return input_text
 
 
 def resize(
@@ -17,12 +37,40 @@ def resize(
     reducing_gap: Optional[int] = None,
 ) -> np.ndarray:
     """Function to resize the input image."""
-    
+
     height, width = size
     resized_image = image.resize(
         (width, height), resample=resample, reducing_gap=reducing_gap
     )
+
     return resized_image
+
+
+def rescale(
+    image: np.ndarray,
+    scale: float,
+    dtype: np.dtype = np.float32,
+) -> np.ndarray:
+    """Function to rescale the pixel values of the image to [0, 1]."""
+
+    rescaled_image = image * scale  # scale is 1.0 / 255.0
+    rescaled_image = rescaled_image.astype(dtype)
+
+    return rescaled_image
+
+
+def normalize(
+    image: np.ndarray,
+    mean: Union[float, Iterable[float]],
+    std: Union[float, Iterable[float]],
+) -> np.ndarray:
+    """Function to normalize the pixel values of the image."""
+
+    mean = np.array(mean, dtype=image.dtype)
+    std = np.array(std, dtype=image.dtype)
+    image = (image - mean) / std
+
+    return image
 
 
 def process_images(
