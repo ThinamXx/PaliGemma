@@ -7,6 +7,41 @@ from torch.nn import CrossEntropyLoss
 from siglip.model import SigLIPVisionConfig, SigLIPVisionModel
 
 
+class GemmaConfig:
+
+    def __init__(
+        self,
+        vocab_size: None,
+        hidden_size: None,
+        intermediate_size: None,
+        num_hidden_layers: None,
+        num_attention_heads: None,
+        num_key_value_heads: None,
+        head_dim: int = 256,
+        max_position_embeddings: int = 8192,
+        rms_norm_eps: float = 1e-6,
+        rope_theta: float = 10000.0,
+        attention_bias: bool = False,
+        attention_dropout: float = 0.0,
+        pad_token_id: int = None,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.num_key_value_heads = num_key_value_heads
+        self.head_dim = head_dim
+        self.max_position_embeddings = max_position_embeddings
+        self.rms_norm_eps = rms_norm_eps
+        self.rope_theta = rope_theta
+        self.attention_bias = attention_bias
+        self.attention_dropout = attention_dropout
+        self.pad_token_id = pad_token_id
+
+
 class PaliGemmaConfig:
 
     def __init__(
@@ -63,6 +98,52 @@ class PaliGemmaForConditionalGeneration(nn.Module):
 
         return self.language_model.tie_weights()
 
+    def _merge_input_ids_and_pixel_features(
+        self,
+        image_features: torch.Tensor,
+        input_embeds: torch.Tensor,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        kv_cache: Optional[KVCache] = None,
+    ):
+        _, _, embed_size = image_features.shape
+        batch_size, seq_length = input_ids.shape
+        dtype, device = input_embeds.dtype, input_embeds.device
+
+        # 1. Scale the image features to the hidden size:
+        # (batch_size, num_patches, hidden_size)
+        scaled_image_features = image_features / (self.config.hidden_size**0.5)
+
+        # 2. Create the final input embeddings and masks:
+        # (batch_size, seq_length, hidden_size)
+        final_embeds = torch.zeros(
+            batch_size, seq_length, embed_size, dtype=dtype, device=device
+        )
+        # (batch_size, seq_length)
+        text_mask = (input_ids != self.config.image_token_index) & (
+            input_ids != self.pad_token_id
+        )
+        # (batch_size, seq_length)
+        image_mask = input_ids == self.config.image_token_index
+        # (batch_size, seq_length)
+        pad_mask = input_ids == self.pad_token_id
+
+        # Expand the masks to the embedding dimension:
+        # (batch_size, seq_length, hidden_size)
+        text_mask_expanded = text_mask.unsqueeze(-1).expand(-1, -1, embed_size)
+        image_mask_expanded = image_mask.unsqueeze(-1).expand(-1, -1, embed_size)
+        pad_mask_expanded = pad_mask.unsqueeze(-1).expand(-1, -1, embed_size)
+
+        # 3. Add the embeddings to the final embeddings:
+        final_embeds = torch.where(text_mask_expanded, input_embeds, final_embeds)
+        # using the masked_scatter function because the scaled_image_features size is different to final_embeds.
+        final_embeds = final_embeds.masked_scatter(
+            image_mask_expanded, scaled_image_features
+        )
+        final_embeds = torch.where(
+            pad_mask_expanded, torch.zeros_like(final_embeds), final_embeds
+        )
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -85,7 +166,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         # 3. Merge the input embeddings with the vision features:
         # (batch_size, seq_length, hidden_size)
         input_embeds, attention_mask, position_ids = (
-            self.merge_input_ids_and_pixel_features(
+            self._merge_input_ids_and_pixel_features(
                 image_features, input_embeds, input_ids, attention_mask, kv_cache
             )
         )
