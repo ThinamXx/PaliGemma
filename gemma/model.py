@@ -144,6 +144,47 @@ class PaliGemmaForConditionalGeneration(nn.Module):
             pad_mask_expanded, torch.zeros_like(final_embeds), final_embeds
         )
 
+        # 4. Create the attention mask:
+        q_len = input_embeds.size(1)
+
+        if kv_cache is None or kv_cache.num_items() == 0:
+            # since the input is not padded, we don't need to mask any tokens.
+            # in the Gemma paper, figure 2 shows that all the tokens are not masked during the prefilling.
+            causal_mask = torch.full(
+                (batch_size, q_len, q_len), fill_value=0, dtype=dtype, device=device
+            )
+
+        else:
+            assert q_len == 1
+            kv_len = kv_cache.num_items() + q_len
+            # since the input is not padded, the query token can attend all the previous tokens.
+            causal_mask = torch.full(
+                (batch_size, q_len, kv_len), fill_value=0, dtype=dtype, device=device
+            )
+
+        # add the head dimension to the mask.
+        # (batch_size, q_len, kv_len) -> (batch_size, 1, q_len, kv_len) where 1 is the head dimension.
+        causal_mask = causal_mask.unsqueeze(1)
+
+        # 5. Create the position ids:
+        if kv_cache is not None or kv_cache.num_items() > 0:
+            # the position of the query token is the last token in the sequence.
+            # it extracts the last token in the sequence.
+            position_ids = attention_mask.cumsum(dim=-1)[:, -1]
+            if position_ids.dim() == 1:
+                position_ids = position_ids.unsqueeze(0)
+
+        else:
+            # create the position ids based on the attention mask with valid tokens.
+            # for the masked tokens (mask = 0), the position ids are set to 1.
+            position_ids = (
+                (attention_mask.cumsum(dim=-1))
+                .masked_fill((attention_mask == 0), 1)
+                .to(device)
+            )
+
+        return final_embeds, causal_mask, position_ids
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
