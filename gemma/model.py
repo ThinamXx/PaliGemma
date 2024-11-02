@@ -95,6 +95,34 @@ class GemmaModel(nn.Module):
         )
         self.norm = GemmaRMSNorm(self.config.hidden_size, self.config.rms_norm_eps)
 
+    def get_input_embeddings(self):
+        return self.embed_tokens
+
+    def forward(
+        self,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        input_embeds: Optional[torch.FloatTensor] = None,
+        kv_cache: Optional[KVCache] = None,
+    ) -> torch.FloatTensor:
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = input_embeds
+        norma = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype)
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = hidden_states * norma
+
+        for layer in self.layers:
+            hidden_states = layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                kv_cache=kv_cache,
+            )
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = self.norm(hidden_states)
+
+        return hidden_states
+
 
 class GemmaForCausalLM(nn.Module):
 
