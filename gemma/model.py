@@ -77,6 +77,70 @@ class PaliGemmaConfig:
         self.vision_config.projection_dim = projection_dim
 
 
+class GemmaRMSNorm(nn.Module):
+
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.zeros(dim))
+
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, x):
+        output = self._norm(x.float())
+        output = output * (1.0 + self.weight.float())
+
+        return output.type_as(x)
+
+
+class GemmaDecoderLayer(nn.Module):
+
+    def __init__(self, config: GemmaConfig, layer_idx: int):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+
+        self.self_attn = GemmaAttention(config, layer_idx=layer_idx)
+        self.mlp = GemmaMLP(config)
+
+        self.input_layernorm = GemmaRMSNorm(self.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = GemmaRMSNorm(
+            self.hidden_size, eps=config.rms_norm_eps
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        kv_cache: Optional[KVCache] = None,
+    ) -> Tuple[
+        torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
+    ]:
+        # (batch_size, seq_len, hidden_size)
+        residual = hidden_states
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = self.input_layernorm(hidden_states)
+        # (batch_size, seq_len, hidden_size)
+        hidden_states, _ = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            kv_cache=kv_cache,
+        )
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = hidden_states + residual
+        residual = hidden_states
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = self.mlp(hidden_states)
+        # (batch_size, seq_len, hidden_size)
+        hidden_states = hidden_states + residual
+
+        return hidden_states
+
+
 class GemmaModel(nn.Module):
 
     def __init__(self, config: GemmaConfig):

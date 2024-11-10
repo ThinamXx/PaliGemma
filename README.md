@@ -11,6 +11,7 @@ I am reading these papers:
 ✅ [Sigmoid Loss for Language Image Pre-Training](https://arxiv.org/pdf/2303.15343)  
 ✅ [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929)  
 ☑️ [Root Mean Square Layer Normalization](https://arxiv.org/abs/1910.07467)  
+✅ [Gemma: Open Models Based on Gemini Research and Technology](https://arxiv.org/pdf/2403.08295)  
 
 
 ## Goals 🎯
@@ -22,7 +23,8 @@ I am reading these papers:
 ✅ Review the working mechanism of convolutional neural networks.  
 ✅ Read about PaLiGemma [tokenizer](https://github.com/google-research/big_vision/blob/main/big_vision/configs/proj/paligemma/README.md#tokenizer).  
 ☑️ Read HuggingFace's blog on [PaLiGemma](https://huggingface.co/blog/paligemma).  
-☑️ Read the RMSNorm paper.   
+☑️ Read the RMSNorm paper.  
+☑️ Read and understand the Gemma paper.  
 
 
 ## GitHub Repos 📦  
