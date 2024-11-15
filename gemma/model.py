@@ -94,6 +94,77 @@ class GemmaRMSNorm(nn.Module):
         return output.type_as(x)
 
 
+class GemmaMLP(nn.Module):
+
+    def __init__(self, config: GemmaConfig):
+        super().__init__()
+        self.config = config
+        self.hidden_size = self.config.hidden_size
+        self.intermediate_size = self.config.intermediate_size
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+
+    def forward(self, x):
+        # (batch_size, seq_len, hidden_size) -> (batch_size, seq_len, intermediate_size)
+        hidden_states = self.gate_proj(x)
+        # (batch_size, seq_len, intermediate_size)
+        hidden_states = nn.functional.gelu(hidden_states, approximate="tanh")
+        # (batch_size, seq_len, hidden_size) -> (batch_size, seq_len, intermediate_size)
+        hidden_states_up = self.up_proj(x)
+        # (batch_size, seq_len, intermediate_size)
+        hidden_states = hidden_states * hidden_states_up
+        # (batch_size, seq_len, intermediate_size) -> (batch_size, seq_len, hidden_size)
+        hidden_states = self.down_proj(hidden_states)
+
+        return hidden_states
+
+
+class GemmaAttention(nn.ModuleDict):
+
+    def __init__(self, config: GemmaConfig, layer_idx: Optional[int] = None):
+        super().__init__()
+        self.config = config
+        self.layer_idx = layer_idx
+
+        self.attention_dropout = self.config.attention_dropout
+        self.hidden_size = self.config.hidden_size
+        self.num_heads = self.config.num_attention_heads
+        self.head_dim = self.config.head_dim
+        self.num_kv_heads = self.config.num_key_value_heads
+        self.num_kv_groups = self.num_heads // self.num_kv_heads
+        self.max_position_embeddings = self.config.max_position_embeddings
+        self.rope_theta = self.config.rope_theta
+        self.is_causal = True
+
+        assert self.hidden_size % self.num_heads == 0
+
+        # hidden_size = 1024, n_heads = 8, head_dim = 1024/8 = 128, kv_heads = 1
+        # Wq = [1024, 8 * 128]
+        # Wk = [1024, 1 * 128]
+        # Wv = [1024, 1 * 128]
+        self.q_proj = nn.Linear(
+            self.hidden_size,
+            self.num_heads * self.head_dim,
+            bias=self.config.attention_bias,
+        )
+        self.k_proj = nn.Linear(
+            self.hidden_size,
+            self.num_kv_heads * self.head_dim,
+            bias=self.config.attention_bias,
+        )
+        self.v_proj = nn.Linear(
+            self.hidden_size,
+            self.num_kv_heads * self.head_dim,
+            bias=self.config.attention_bias,
+        )
+        self.o_proj = nn.Linear(
+            self.num_heads * self.head_dim,
+            self.hidden_size,
+            bias=self.config.attention_bias,
+        )
+
+
 class GemmaDecoderLayer(nn.Module):
 
     def __init__(self, config: GemmaConfig, layer_idx: int):
