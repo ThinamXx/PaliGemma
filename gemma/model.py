@@ -7,6 +7,43 @@ from torch.nn import CrossEntropyLoss
 from siglip.model import SigLIPVisionConfig, SigLIPVisionModel
 
 
+class KVCache:
+
+    def __init__(self):
+        self.key_cache = List[torch.Tensor] = []
+        self.value_cache = List[torch.Tensor] = []
+
+    def num_items(self) -> int:
+        if len(self.key_cache) == 0:
+            return 0
+
+        else:
+            # key_states: (batch_size, num_kv_heads, seq_len, head_dim)
+            return self.key_cache[0].shape[-2]
+
+    def update(
+        self,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        layer_idx: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if len(self.key_cache) <= layer_idx:
+            # create the KVCache for that layer.
+            self.key_cache.append(key_states)
+            self.value_cache.append(value_states)
+
+        else:
+            # (batch_size, num_kv_heads, seq_len, head_dim)
+            self.key_cache[layer_idx] = torch.cat(
+                [self.key_cache[layer_idx], key_states], dim=-2
+            )
+            self.value_cache[layer_idx] = torch.cat(
+                [self.value_cache[layer_idx], value_states], dim=-2
+            )
+
+        return self.key_cache[layer_idx], self.value_cache[layer_idx]
+
+
 class GemmaConfig:
 
     def __init__(
@@ -163,6 +200,108 @@ class GemmaAttention(nn.ModuleDict):
             self.hidden_size,
             bias=self.config.attention_bias,
         )
+
+        self.rotary_emb = GemmaRotaryEmbedding(
+            self.head_dim,
+            max_position_embeddings=self.max_position_embeddings,
+            base=self.rope_theta,
+        )
+
+    def _repeat_kv(self, hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+        batch_size, n_kv_heads, seq_len, head_dim = hidden_states.shape
+
+        if n_rep == 1:
+            return hidden_states
+
+        hidden_states = hidden_states[:, :, None, :, :].expand(
+            batch_size, n_kv_heads, n_rep, seq_len, head_dim
+        )
+
+        return hidden_states.reshape(batch_size, n_kv_heads * n_rep, seq_len, head_dim)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        kv_cache: Optional[KVCache] = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        # (batch_size, seq_len, hidden_size)
+        batch_size, s_len, _ = hidden_states.size()
+        # (batch_size, seq_len, num_heads_q * head_dim)
+        query_states = self.q_proj(hidden_states)
+        # (batch_size, seq_len, num_kv_heads * head_dim)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        # (batch_size, num_heads_q, seq_len, head_dim)
+        query_states = query_states.view(
+            batch_size, s_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
+        # (batch_size, num_kv_heads, seq_len, head_dim)
+        key_states = key_states.view(
+            batch_size, s_len, self.num_kv_heads, self.head_dim
+        ).transpose(1, 2)
+        value_states = value_states.view(
+            batch_size, s_len, self.num_kv_heads, self.head_dim
+        ).transpose(1, 2)
+
+        # (batch_size, s_len, head_dim), (batch_size, s_len, head_dim)
+        cos, sin = self.rotary_emb(
+            value_states,
+            position_ids,
+            seq_len=None,
+        )
+        # (batch_size, num_heads_q, seq_len, head_dim), (batch_size, num_kv_heads, seq_len, head_dim)
+        query_states, key_states = apply_rotary_pos_emb(
+            query_states, key_states, cos, sin
+        )
+
+        if kv_cache is not None:
+            key_states, value_states = kv_cache.update(
+                key_states, value_states, self.layer_idx
+            )
+
+        key_states = self._repeat_kv(key_states, self.num_kv_groups)
+        value_states = self._repeat_kv(value_states, self.num_kv_groups)
+
+        # (batch_size, num_heads_q, seq_len_q, seq_len_kv)
+        attn_weights = torch.matmul(
+            query_states, key_states.transpose(2, 3)
+        ) / math.sqrt(self.head_dim)
+
+        assert attention_mask is not None
+        # (batch_size, num_heads_q, seq_len_q, seq_len_kv)
+        attn_weights = attn_weights + attention_mask
+
+        # apply softmax to the attention weights so that the values sum up to 1.
+        # (batch_size, num_heads_q, seq_len_q, seq_len_kv)
+        attn_weights = nn.functional.softmax(
+            attn_weights, dim=-1, dtype=torch.float32
+        ).to(query_states.dtype)
+        # apply dropout to the attention weights when training.
+        attn_weights = nn.functional.dropout(
+            attn_weights, p=self.attention_dropout, training=self.training
+        )
+        # (batch_size, num_heads_q, seq_len_q, seq_len_kv) -> (batch_size, num_heads_q, seq_len_q, head_dim)
+        attn_output = torch.matmul(attn_weights, value_states)
+        # assert attn_output.size() == (batch_size, self.num_heads, seq_len, self.head_dim)
+        if attn_output.size() != (batch_size, self.num_heads, s_len, self.head_dim):
+            raise ValueError(
+                f"Attention output should have the shape "
+                f"(batch_size, num_heads, seq_len, head_dim), but got "
+                f"{attn_output.size()}"
+            )
+
+        # (batch_size, num_heads_q, seq_len_q, head_dim) -> (batch_size, seq_len_q, num_heads_q, head_dim)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        # (batch_size, seq_len_q, num_heads_q, head_dim) -> (batch_size, seq_len_q, num_heads_q * head_dim)
+        attn_output = attn_output.view(batch_size, s_len, -1)
+        # (batch_size, seq_len_q, hidden_size)
+        attn_output = self.out_proj(attn_output)
+
+        return attn_output, attn_weights
 
 
 class GemmaDecoderLayer(nn.Module):
