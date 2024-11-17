@@ -157,6 +157,52 @@ class GemmaMLP(nn.Module):
         return hidden_states
 
 
+class GemmaRotaryEmbedding(nn.Module):
+
+    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
+        super().__init__()
+        # RoPE is applied to each head independently so it's head dim.
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+
+        inv_freq = 1.0 / (
+            self.base
+            ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float() / self.dim)
+        )
+        self.register_buffer("inv_freq", tensor=inv_freq, persistent=False)
+
+    @torch.no_grad()
+    def forward(self, x, position_ids, seq_len=None):
+        # x: (batch_size, num_heads, seq_len, head_dim)
+        self.inv_freq.to(x.device)
+        # inv_freq_expanded: (batch_size, head_dim // 2, 1)
+        inv_freq_expanded = (
+            self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
+        )
+        # (batch_size, 1, seq_len)
+        position_ids_expanded = position_ids[:, None, :].float()
+        device_type = x.device.type
+        device_type = (
+            device_type
+            if isinstance(device_type, str) and device_type != "mps"
+            else "cpu"
+        )
+
+        with torch.autocast(device_type=device_type, enabled=False):
+            # (batch_size, head_dim // 2, 1) @ (batch_size, 1, seq_len) -> (batch_size, seq_len, head_dim//2)
+            freqs = (
+                inv_freq_expanded.float() @ position_ids_expanded.float()
+            ).transpose(1, 2)
+            # (batch_size, seq_len, head_dim)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            # (batch_size, seq_len, head_dim)
+            cos = emb.cos()
+            sin = emb.sin()
+
+        return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
+
 class GemmaAttention(nn.ModuleDict):
 
     def __init__(self, config: GemmaConfig, layer_idx: Optional[int] = None):
@@ -207,6 +253,26 @@ class GemmaAttention(nn.ModuleDict):
             base=self.rope_theta,
         )
 
+    def _rotate_half(self, x):
+        # [-x2, x1, -x4, x3, ...]
+        # First half of the last dimension.
+        x1 = x[..., : x.shape[-1] // 2]
+        # Second half of the last dimension.
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+
+    def _apply_rotary_pos_emb(self, q, k, cos, sin, unsqueeze_dim=1):
+        # add head dimension.
+        cos = cos.unsqueeze(unsqueeze_dim)
+        sin = sin.unsqueeze(unsqueeze_dim)
+
+        # Formula mentioned in Eq: 34 of the RoFormer paper.
+        q_embed = (q * cos) + (self._rotate_half(q) * sin)
+        k_embed = (k * cos) + (self._rotate_half(k) * sin)
+
+        # (batch_size, num_q_heads, seq_len, head_dim), (batch_size, num_kv_heads, seq_len, head_dim)
+        return q_embed, k_embed
+
     def _repeat_kv(self, hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
         batch_size, n_kv_heads, seq_len, head_dim = hidden_states.shape
 
@@ -254,7 +320,7 @@ class GemmaAttention(nn.ModuleDict):
             seq_len=None,
         )
         # (batch_size, num_heads_q, seq_len, head_dim), (batch_size, num_kv_heads, seq_len, head_dim)
-        query_states, key_states = apply_rotary_pos_emb(
+        query_states, key_states = self._apply_rotary_pos_emb(
             query_states, key_states, cos, sin
         )
 

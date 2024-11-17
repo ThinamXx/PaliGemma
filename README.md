@@ -23,8 +23,10 @@ I am reading these papers:
 ✅ Review the working mechanism of convolutional neural networks.  
 ✅ Read about PaLiGemma [tokenizer](https://github.com/google-research/big_vision/blob/main/big_vision/configs/proj/paligemma/README.md#tokenizer).  
 ☑️ Read HuggingFace's blog on [PaLiGemma](https://huggingface.co/blog/paligemma).  
-☑️ Read the RMSNorm paper.  
+✅ Read the RMSNorm paper.  
 ☑️ Read and understand the Gemma paper.  
+✅ Review the working mechanism of RoFormer.  
+✅ Understand and implement the KVCache.  
 
 
 ## GitHub Repos 📦  
