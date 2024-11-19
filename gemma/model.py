@@ -530,7 +530,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         super().__init__()
         self.config = config
         self.vocab_size = config.vocab_size
-        self.vision_model = SigLIPVisionModel(config=SigLIPVisionConfig)
+        self.vision_tower = SigLIPVisionModel(config=SigLIPVisionConfig)
         self.multi_modal_projector = PaliGemmaMultiModalProjector(config)
 
         language_model = GemmaForCausalLM(config.text_config)
@@ -647,7 +647,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
 
         # 2. Merge the input embeddings with the vision features:
         # (batch_size, channels, height, width) -> (batch_size, num_patches, embed_size)
-        selected_img_features = self.vision_model(pixel_values.to(input_embeds.dtype))
+        selected_img_features = self.vision_tower(pixel_values.to(input_embeds.dtype))
         # (batch_size, num_patches, embed_size) -> (batch_size, num_patches, hidden_size)
         image_features = self.multi_modal_projector(selected_img_features)
 
