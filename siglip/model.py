@@ -18,6 +18,7 @@ class SigLIPVisionConfig:
         layer_norm_eps: float = 1e-12,
         attention_dropout: float = 0.0,
         num_image_tokens: int = None,
+        **kwargs,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -51,7 +52,7 @@ class SigLIPVisionEmbeddings(nn.Module):
 
         self.num_patches = (self.image_size // self.patch_size) ** 2
         self.num_positions = self.num_patches
-        self.position_embeddings = nn.Embedding(self.num_positions, self.embed_dim)
+        self.position_embedding = nn.Embedding(self.num_positions, self.embed_dim)
 
         self.register_buffer(
             "position_ids",

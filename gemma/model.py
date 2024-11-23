@@ -1,9 +1,14 @@
+import os
 import math
 from typing import List, Tuple, Optional
 
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
+
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from siglip.model import SigLIPVisionConfig, SigLIPVisionModel
 
 
@@ -63,7 +68,7 @@ class GemmaConfig:
         pad_token_id: int = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__()
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
@@ -93,7 +98,7 @@ class PaliGemmaConfig:
         pad_token_id: int = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__()
         self.ignore_index = ignore_index
         self.image_token_index = image_token_index
         self.projection_dim = projection_dim
@@ -430,7 +435,7 @@ class GemmaModel(nn.Module):
         self.layers = nn.ModuleList(
             [
                 GemmaDecoderLayer(config, layer_idx)
-                for layer_idx in self.config.num_hidden_layers
+                for layer_idx in range(self.config.num_hidden_layers)
             ]
         )
         self.norm = GemmaRMSNorm(self.config.hidden_size, self.config.rms_norm_eps)
@@ -530,7 +535,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         super().__init__()
         self.config = config
         self.vocab_size = config.vocab_size
-        self.vision_tower = SigLIPVisionModel(config=SigLIPVisionConfig)
+        self.vision_tower = SigLIPVisionModel(config=config.vision_config)
         self.multi_modal_projector = PaliGemmaMultiModalProjector(config)
 
         language_model = GemmaForCausalLM(config.text_config)

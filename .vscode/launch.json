@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug inference file",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--model_path", "/home/ubuntu/bin/PaliGemma/assets/paligemma-3b-pt-224",
+                "--prompt", "Where is the person resting?",
+                "--image_file_path", "/home/ubuntu/bin/PaliGemma/assets/test.png",
+                "--max_tokens", "100",
+                "--temperature", "0.7",
+                "--top_p", "0.9",
+                "--do_sample", "False",
+                "--only_cpu","False",
+            ]
+        }
+    ]
+}

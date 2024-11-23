@@ -214,7 +214,7 @@ def load_hf_model(
                 tensors[key] = f.get_tensor(key)
 
     # 3. Load model's config.
-    with open(os.path.json(model_path, "config.json"), "r") as f:
+    with open(os.path.join(model_path, "config.json"), "r") as f:
         model_config_file = json.load(f)
         config = PaliGemmaConfig(**model_config_file)
 
