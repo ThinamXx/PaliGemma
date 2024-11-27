@@ -141,7 +141,7 @@ class PaliGemmaProcessor:
         EXTRA_TOKENS = [f"<loc{i:04d}>" for i in range(1024)]
         # Tokens for image segmentation.
         EXTRA_TOKENS += [f"<seg{i:03d}>" for i in range(128)]
-        tokenizer.add_special_tokens(EXTRA_TOKENS)
+        tokenizer.add_tokens(EXTRA_TOKENS)
         self.image_token_id = tokenizer.convert_tokens_to_ids(self.IMAGE_TOKEN)
         tokenizer.add_bos_token = False
         tokenizer.add_eos_token = False
@@ -220,7 +220,7 @@ def load_hf_model(
 
     # 4. Create the model.
     model = PaliGemmaForConditionalGeneration(config=config).to(device)
-    model = model.load_state_dict(tensors, strict=False)
+    model.load_state_dict(tensors, strict=False)
 
     model.tie_weights()
 

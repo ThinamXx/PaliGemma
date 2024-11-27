@@ -15,8 +15,8 @@ from siglip.model import SigLIPVisionConfig, SigLIPVisionModel
 class KVCache:
 
     def __init__(self):
-        self.key_cache = List[torch.Tensor] = []
-        self.value_cache = List[torch.Tensor] = []
+        self.key_cache: List[torch.Tensor] = []
+        self.value_cache: List[torch.Tensor] = []
 
     def num_items(self) -> int:
         if len(self.key_cache) == 0:
@@ -370,7 +370,7 @@ class GemmaAttention(nn.ModuleDict):
         # (batch_size, seq_len_q, num_heads_q, head_dim) -> (batch_size, seq_len_q, num_heads_q * head_dim)
         attn_output = attn_output.view(batch_size, s_len, -1)
         # (batch_size, seq_len_q, hidden_size)
-        attn_output = self.out_proj(attn_output)
+        attn_output = self.o_proj(attn_output)
 
         return attn_output, attn_weights
 

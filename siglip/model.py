@@ -75,7 +75,7 @@ class SigLIPVisionEmbeddings(nn.Module):
             1, 2
         )  # (batch_size, num_patches, hidden_size)
 
-        embeddings = embeddings + self.position_embeddings(self.position_ids)
+        embeddings = embeddings + self.position_embedding(self.position_ids)
 
         return embeddings  # (batch_size, num_patches, hidden_size)
 
@@ -223,7 +223,7 @@ class SigLIPVisionEncoder(nn.Module):
 
         for layer in self.layers:
             # (batch_size, num_patches, hidden_size) -> (batch_size, num_patches, hidden_size)
-            hidden_states = layer(hidden_states=hidden_states)
+            hidden_states = layer(inputs_embeds=hidden_states)
 
         return hidden_states
 

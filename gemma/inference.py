@@ -37,6 +37,9 @@ def get_model_input(
     device: str,
 ):
     image = Image.open(image_file_path)
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    assert image.mode == "RGB", f"Image mode is {image.mode}, expected RGB."
     images = [image]
     prompts = [prompt]
     model_inputs = processor(text=prompts, images=images)
@@ -105,7 +108,7 @@ def test_inference(
         generated_tokens, skip_special_tokens=True
     )
 
-    return prompt + decoded_tokens
+    print(f"Generated text: {prompt + ' ' + decoded_tokens}")
 
 
 def main(

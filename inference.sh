@@ -1,13 +1,13 @@
-MODEL_PATH = "$HOME/bin/PaliGemma/assets/paligemma-3b-pt-224"
-PROMPT = "Where is the person resting?"
-IMAGE_FILE_PATH = "$HOME/bin/PaliGemma/assets/test.png"
-MAX_TOKENS = 100
-TEMPERATURE = 0.8
-TOP_P = 0.9
-DO_SAMPLE = False
-ONLY_CPU = False
+export MODEL_PATH="/home/ubuntu/bin/PaliGemma/assets/paligemma-3b-pt-224"
+export PROMPT="Where is the person resting?"
+export IMAGE_FILE_PATH="/home/ubuntu/bin/PaliGemma/assets/test.png"
+export MAX_TOKENS=500
+export TEMPERATURE=0.8
+export TOP_P=0.9
+export DO_SAMPLE=False
+export ONLY_CPU=False
 
-python $HOME/bin/PaliGemma/gemma/inference.py \
+python /home/ubuntu/bin/PaliGemma/gemma/inference.py \
     --model_path $MODEL_PATH \
     --prompt "$PROMPT" \
     --image_file_path $IMAGE_FILE_PATH \
